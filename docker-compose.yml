@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: carrental_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: examplepassword
+      MYSQL_DATABASE: carrentaldb
+      MYSQL_USER: user
+      MYSQL_PASSWORD: userpassword
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./mysql-init/:/docker-entrypoint-initdb.d/   # optional SQL init scripts
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./carrental-backend
+      dockerfile: Dockerfile
+    container_name: carrental_backend
+    restart: unless-stopped
+    env_file:
+      - ./carrental-backend/.env
+    environment:
+      # optional overrides
+      SPRING_DATASOURCE_PASSWORD: examplepassword
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    networks:
+      - carrental_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+
+  frontend:
+    build:
+      context: ./carrental-frontend
+      dockerfile: Dockerfile
+    container_name: carrental_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"   # host:container -> serves nginx container port 80 on host 5173
+    networks:
+      - carrental_net
+    environment:
+      VITE_API_BASE_URL: "http://localhost:8081"  # optionally used during build
+
+volumes:
+  db_data:
+
+networks:
+  carrental_net:
+    driver: bridge
